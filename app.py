@@ -54,7 +54,7 @@ with st.form("ch_form", clear_on_submit=True):
     
     submitted = st.form_submit_button("✅ 送出（自動覆蓋舊資料）", type="primary", use_container_width=True)
 
-      if submitted:
+if submitted:
         if not user.strip():
             st.error("❌ 請填寫你的用戶識別資訊（姓名 / Email / 員工編號）")
             st.stop()
