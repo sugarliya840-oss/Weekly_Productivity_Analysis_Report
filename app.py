@@ -54,35 +54,46 @@ with st.form("ch_form", clear_on_submit=True):
     
     submitted = st.form_submit_button("✅ 送出（自動覆蓋舊資料）", type="primary", use_container_width=True)
 
-    if submitted:
+      if submitted:
         if not user.strip():
-            st.error("❌ 請填寫你的用戶識別資訊")
-        else:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            new_row = {
-                "User": user.strip(),
-                "Timestamp": timestamp,
-                "Total_CH_Hrs_this_week": total_ch,
-                "Avg_CH_per_actual_working_day": avg_ch,
-                "Public_holidays": public_holidays,
-                "Annual_leave_Business_trip_days": leave_days,
-                "Non_chargeable_projects_tasks": non_chargeable.strip()
-            }
-            
-            # 讀取現有資料並移除該用戶舊紀錄
-            df = load_data()
-            if not df.empty:
-                df = df[df["User"] != user.strip()]
-            
-            # 新增新資料
-            new_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            
-            # 清空並重寫 Google Sheet（小團隊完全夠用）
-            worksheet.clear()
-            worksheet.update([new_df.columns.tolist()] + new_df.values.tolist())
-            
-            st.success(f"🎉 {user} 的資料已成功儲存並覆蓋舊紀錄！")
-            st.rerun()
+            st.error("❌ 請填寫你的用戶識別資訊（姓名 / Email / 員工編號）")
+            st.stop()
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 處理多行文字，防止 JSON 錯誤
+        non_chargeable_clean = (non_chargeable or "").strip().replace("\n", "\\n")
+        
+        new_row = {
+            "User": user.strip(),
+            "Timestamp": timestamp,
+            "Total_CH_Hrs_this_week": float(total_ch),
+            "Avg_CH_per_actual_working_day": float(avg_ch),
+            "Public_holidays": int(public_holidays),
+            "Annual_leave_Business_trip_days": float(leave_days),
+            "Non_chargeable_projects_tasks": non_chargeable_clean
+        }
+        
+        # 讀取現有資料並移除該用戶的舊紀錄
+        df = load_data()
+        if not df.empty:
+            df = df[df["User"] != user.strip()]
+        
+        # 新增新資料
+        new_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        
+        # === 安全更新：先寫標題 + 資料，防止標題消失 ===
+        worksheet.clear()  # 清空內容
+        
+        # 確保標題永遠在第一行
+        header = new_df.columns.tolist()
+        values = [header] + new_df.values.tolist()
+        
+        # 使用 RAW 模式更新整個工作表
+        worksheet.update(values, value_input_option="RAW")
+        
+        st.success(f"🎉 {user.strip()} 的資料已成功儲存！舊資料已自動覆蓋。")
+        st.rerun()
 
 # ==================== 顯示全體表格 ====================
 st.subheader("📋 全體用戶最新資料")
