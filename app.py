@@ -54,46 +54,53 @@ with st.form("ch_form", clear_on_submit=True):
     
     submitted = st.form_submit_button("✅ 送出（自動覆蓋舊資料）", type="primary", use_container_width=True)
 
-if submitted:
+    if submitted:
         if not user.strip():
             st.error("❌ 請填寫你的用戶識別資訊（姓名 / Email / 員工編號）")
             st.stop()
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # 處理多行文字，防止 JSON 錯誤
-        non_chargeable_clean = (non_chargeable or "").strip().replace("\n", "\\n")
-        
+        # 準備新資料（把 NaN / None 轉成空字串，避免 JSON 錯誤）
         new_row = {
             "User": user.strip(),
             "Timestamp": timestamp,
-            "Total_CH_Hrs_this_week": float(total_ch),
-            "Avg_CH_per_actual_working_day": float(avg_ch),
-            "Public_holidays": int(public_holidays),
-            "Annual_leave_Business_trip_days": float(leave_days),
-            "Non_chargeable_projects_tasks": non_chargeable_clean
+            "Total_CH_Hrs_this_week": float(total_ch) if pd.notna(total_ch) else "",
+            "Avg_CH_per_actual_working_day": float(avg_ch) if pd.notna(avg_ch) else "",
+            "Public_holidays": int(public_holidays) if pd.notna(public_holidays) else "",
+            "Annual_leave_Business_trip_days": float(leave_days) if pd.notna(leave_days) else "",
+            "Non_chargeable_projects_tasks": non_chargeable.strip() if non_chargeable else ""
         }
         
         # 讀取現有資料並移除該用戶的舊紀錄
         df = load_data()
         if not df.empty:
-            df = df[df["User"] != user.strip()]
+            df = df[df["User"] != user.strip()].copy()
         
         # 新增新資料
         new_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         
-        # === 安全更新：先寫標題 + 資料，防止標題消失 ===
-        worksheet.clear()  # 清空內容
-        
-        # 確保標題永遠在第一行
-        header = new_df.columns.tolist()
-        values = [header] + new_df.values.tolist()
-        
-        # 使用 RAW 模式更新整個工作表
-        worksheet.update(values, value_input_option="RAW")
-        
-        st.success(f"🎉 {user.strip()} 的資料已成功儲存！舊資料已自動覆蓋。")
-        st.rerun()
+        # === 改用更安全的更新方式 ===
+        try:
+            # 先清空工作表（但保留格式）
+            worksheet.clear()
+            
+            # 把 DataFrame 轉成 list of lists，並處理所有 NaN
+            values = [new_df.columns.tolist()] + new_df.fillna("").values.tolist()
+            
+            # 使用 batch_update 更穩定（避免單次 update 太大）
+            worksheet.batch_update([{
+                'range': 'A1',
+                'values': values,
+                'majorDimension': 'ROWS'
+            }], value_input_option="RAW")
+            
+            st.success(f"🎉 {user.strip()} 的資料已成功儲存！舊資料已自動覆蓋。")
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"儲存失敗：{str(e)}")
+            st.info("請稍後再試，或聯絡管理員。")
 
 # ==================== 顯示全體表格 ====================
 st.subheader("📋 全體用戶最新資料")
